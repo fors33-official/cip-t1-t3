@@ -18,6 +18,36 @@ Sampling rule (see `METHODS.md`): first-parent history, every 25th commit, plus 
 - Start (tag 3.0.0): `88140422a9d6585a7edfb2c265ebed5d0736df2c`
 - End (tag 3.2.4): `2105caa49bae87c5809c274e407619a0de2639d1`
 
-## Train / test split
+## Train / test split (v1)
 
-When family B is run: assign whole repositories, not samples. Pre-declared: flask is train, httpie/cli is test. Do not reverse that assignment after labels are seen.
+When family B v1 is run: assign whole repositories, not samples. Pre-declared: flask is train, httpie/cli is test. Do not reverse that assignment after labels are seen.
+
+## Corpus v2 (calendar 2023)
+
+Frozen 7 September 2026, after the `METHODS.md` Corpus v2 lock, **before** revert-message inspection. Do not add, drop, or slide these SHAs after that inspection. v1 windows F1 and H1 above stay as published.
+
+Bounds: default-branch first-parent. Git `--after="2023-01-01 00:00:00 +0000"` `--before="2024-01-01 00:00:00 +0000"` only. Start is the first listed commit; end is the last.
+
+First-parent counts below are commit counts in that walk, not revert counts. Archive cap is 2000 first-parent commits (see `METHODS.md`). If a window exceeds the cap, do not run `git archive` until the maintainer says to proceed. Do not replace a remote by revert density.
+
+### Window D1: django/django (train)
+
+- Remote: `https://github.com/django/django.git`
+- Default branch at freeze: `main`
+- Start: `174d8157b5700f6451ac0bdc3eef7e73121bc4a4`
+- End: `d88ec42bd0a37340c8477a6f20bf26e58bd84735`
+- First-parent commits in window: 966
+
+### Window C1: python/cpython (test)
+
+- Remote: `https://github.com/python/cpython.git`
+- Default branch at freeze: `main`
+- Start: `1f6c87ca7b9351b2e5c5363504796fce0554c9b8` (committer stamp `2022-12-31 19:01:44 -0500`, which is `2023-01-01 00:01:44 +0000`)
+- End: `2849cbb53afc8c6a4465f1b3490c67c2455caf6f`
+- First-parent commits in window: 4442
+
+C1 exceeds the 2000 first-parent cap. Stop before archives.
+
+### Train / test split (v2)
+
+Whole repositories, not samples. Pre-declared: django/django is train, python/cpython is test. Do not reverse that assignment after labels are seen.

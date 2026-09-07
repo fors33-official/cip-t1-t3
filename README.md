@@ -5,7 +5,7 @@ Methods and synthetic checks for public mismatch level *m* as defined in Hartman
 This repository is analysis code and tables for that paper. It is not Fors33 commercial software. It does not implement or disclose a production estimator of *m*.
 
 **Publisher:** Fors33, Inc.  
-**Status:** family A (synthetic) is in this tree. Observational family B is not run until the windows in `CORPUS.md` are materialized under the rules in `METHODS.md`.
+**Status:** family A (synthetic) and family B (observational tables) are in this tree. Family B **v1** tag windows (Flask 2.0.0-3.0.0 train, HTTPie 3.0.0-3.2.4 test) found **zero** revert-message commits, so T1 has no positives and Youden τ is undefined. See `RESULTS.md` (copied from `results/RESULTS.md`). Family B **v2** calendar windows (django/django train, python/cpython test) have revert-message commits; T1 lead-rise is saturated on both classes; fitted τ is an operating point, not window-closed; path-fraction *a* did not beat latest *m* on the pre-declared test rule. Time index is sample number at *k* = 25, not wall-clock. See `results-v2/RESULTS.md`. Do not slide `CORPUS.md` after that inspection.
 
 ## Public *m*
 
@@ -23,6 +23,14 @@ python -m pytest test_synthetic_family_a.py
 ```
 
 Requires pytest. Expected: A-stable and A-steady give *a* near 0; A-accel gives *a* > 0 before *m* reaches 1; *a* is undefined until three samples.
+
+Observational family B (after family A):
+
+```
+python run_family_b.py
+```
+
+`python run_family_b.py` (or `--corpus v1`) writes `results/` and does not touch `results-v2/`. `--corpus v2` writes `results-v2/` (rolling *B* every 20 samples as a secondary table). CPython 2023 exceeds 2000 first-parent commits; this tree already ran v2 with `--allow-over-cap`. Clones listed remotes into gitignored `corpus-work/`. Checkpoints for a stopped v2 run live under `corpus-work/ckpt/` (gitignored). Frozen windows are in `CORPUS.md`.
 
 ## License
 

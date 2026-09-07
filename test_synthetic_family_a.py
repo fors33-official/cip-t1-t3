@@ -105,3 +105,16 @@ def test_a_accel_positive_before_m_saturates(tmp_path: Path):
             seen = True
             break
     assert seen
+
+
+def test_t3_log_m_equals_rewalk(tmp_path: Path):
+    root = tmp_path / "t"
+    root.mkdir()
+    live = _write_tree(root, 20)
+    baseline = dict(live)
+    live[list(live)[0]] = _flip(root, list(live)[0])
+    from public_m import m_from_log, path_status, public_m
+
+    m = public_m(baseline, live)
+    statuses = [path_status(baseline, live, p) for p in baseline]
+    assert m_from_log(statuses, len(baseline)) == m

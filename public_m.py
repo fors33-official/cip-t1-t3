@@ -52,6 +52,21 @@ def public_m_bin(baseline: dict[str, str], live: dict[str, str]) -> int:
     return 0
 
 
+def path_status(baseline: dict[str, str], live: dict[str, str], path: str) -> str:
+    if path not in live:
+        return "missing"
+    if live[path] == baseline[path]:
+        return "unchanged"
+    return "changed"
+
+
+def m_from_log(statuses: list[str], n0: int) -> float:
+    if n0 <= 0:
+        raise ValueError("n0 must be positive")
+    k = sum(1 for s in statuses if s in ("changed", "missing"))
+    return k / n0
+
+
 def kinematics(history: list[float]) -> tuple[float | None, float | None]:
     n = len(history)
     if n < 2:

@@ -1,0 +1,5 @@
+window,repo,split,w,n_positive,n_negative,positives_lead_rise,negatives_lead_rise,positives_lead_rise_m_lt_0.5
+f1,pallets/flask,train,5,0,7,0,6,0
+f1,pallets/flask,train,10,0,2,0,2,0
+h1,httpie/cli,test,5,0,5,0,5,0
+h1,httpie/cli,test,10,0,0,0,0,0

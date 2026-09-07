@@ -1,0 +1,28 @@
+[
+  {
+    "id": "f1",
+    "name": "pallets/flask",
+    "split": "train",
+    "n_first_parent": 274,
+    "n_samples": 12,
+    "n_reverts": 0,
+    "n_event_samples": 0,
+    "t3_log_equals_rewalk": true,
+    "t2_first_m_bin_one": 1,
+    "t2_last_a_positive": 9,
+    "events": []
+  },
+  {
+    "id": "h1",
+    "name": "httpie/cli",
+    "split": "test",
+    "n_first_parent": 204,
+    "n_samples": 10,
+    "n_reverts": 0,
+    "n_event_samples": 0,
+    "t3_log_equals_rewalk": true,
+    "t2_first_m_bin_one": 1,
+    "t2_last_a_positive": 8,
+    "events": []
+  }
+]

@@ -1,0 +1,5 @@
+window,repo,split,w,n_positive,n_negative,positives_lead_rise,negatives_lead_rise,positives_lead_rise_m_lt_0.5
+d1,django/django,train,5,9,26,9,26,9
+d1,django/django,train,10,8,22,8,22,8
+c1,python/cpython,test,5,23,151,23,151,18
+c1,python/cpython,test,10,22,147,22,147,17
