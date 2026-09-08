@@ -1,6 +1,6 @@
 # CIP T1–T3 public mismatch analysis
 
-Methods and synthetic checks for public mismatch level *m* as defined in Hartman, *Kinetic Analysis of Informational Disorder*, v2.4 (2026). Working paper: [https://doi.org/10.5281/zenodo.22417058](https://doi.org/10.5281/zenodo.22417058). Glossary: [https://doi.org/10.5281/zenodo.22499313](https://doi.org/10.5281/zenodo.22499313).
+Methods and synthetic checks for public mismatch level *m* as defined in Hartman, *Kinetic Analysis of Informational Disorder*, v2.4 (2026). This analysis record: [https://doi.org/10.5281/zenodo.22655761](https://doi.org/10.5281/zenodo.22655761). Working paper: [https://doi.org/10.5281/zenodo.22417058](https://doi.org/10.5281/zenodo.22417058). Glossary: [https://doi.org/10.5281/zenodo.22499313](https://doi.org/10.5281/zenodo.22499313).
 
 This repository is analysis code and tables for that paper. It is not Fors33 commercial software. It does not implement or disclose a production estimator of *m*.
 
