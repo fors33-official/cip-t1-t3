@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "corpus-work"
 RESULTS_V1 = ROOT / "results"
 RESULTS_V2 = ROOT / "results-v2"
+RESULTS_V3 = ROOT / "results-v3"
 K = 25
 LEAD_W = (5, 10)
 ROLL_EVERY = 20
@@ -117,6 +118,26 @@ T1_FIELDS = [
     "positives_lead_rise",
     "negatives_lead_rise",
     "positives_lead_rise_m_lt_0.5",
+]
+
+T1_MATCH_FIELDS = T1_FIELDS + [
+    "n_events",
+    "n_dropped_short",
+    "n_dropped_contaminated",
+    "n_dropped_no_a",
+    "n_matched",
+]
+
+WALL_FIELDS = [
+    "window",
+    "repo",
+    "sample",
+    "sha",
+    "committer_unix",
+    "committer_iso",
+    "hours_since_prev_sample",
+    "flag_unix_lt_1",
+    "flag_before_first_parent",
 ]
 
 
@@ -409,6 +430,94 @@ def classify_points(
     return positives, negatives
 
 
+def committer_meta(repo: Path, sha: str) -> tuple[int, str]:
+    raw = run_git(repo, ["log", "-1", "--format=%ct%n%cI", sha])
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    unix = int(lines[0])
+    iso = lines[1] if len(lines) > 1 else ""
+    return unix, iso
+
+
+def first_parent_committer_unix(repo: Path, sha: str) -> int | None:
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    parent = proc.stdout.strip()
+    return int(run_git(repo, ["log", "-1", "--format=%ct", parent]).strip())
+
+
+def control_first_parent_range_contaminated(
+    sampled: list[int],
+    all_shas: list[str],
+    revert_shas: set[str],
+    e: int,
+    w: int,
+) -> bool:
+    i0 = sampled[e - 2 * w]
+    i1 = sampled[e - w]
+    for i in range(i0, i1):
+        if all_shas[i] in revert_shas:
+            return True
+    return False
+
+
+def matched_pair_rows(
+    a_series: list[float | None],
+    m_series: list[float],
+    dm_series: list[float | None],
+    events: set[int],
+    sampled: list[int],
+    all_shas: list[str],
+    revert_shas: set[str],
+    w: int,
+) -> tuple[list[dict], dict]:
+    stats = {
+        "n_events": len(events),
+        "n_dropped_short": 0,
+        "n_dropped_contaminated": 0,
+        "n_dropped_no_a": 0,
+        "n_matched": 0,
+    }
+    pairs: list[dict] = []
+    for e in sorted(events):
+        if e < 2 * w:
+            stats["n_dropped_short"] += 1
+            continue
+        if control_first_parent_range_contaminated(sampled, all_shas, revert_shas, e, w):
+            stats["n_dropped_contaminated"] += 1
+            continue
+        mx_pos = lead_max_a(a_series, e, w)
+        mx_neg = lead_max_a(a_series, e - w, w)
+        if mx_pos is None or mx_neg is None:
+            stats["n_dropped_no_a"] += 1
+            continue
+        stats["n_matched"] += 1
+        dm_pos = dm_series[e - 1]
+        dm_neg = dm_series[e - w - 1]
+        pairs.append(
+            {
+                "e": e,
+                "max_a_pos": mx_pos,
+                "max_a_neg": mx_neg,
+                "m_pos": m_series[e - 1],
+                "m_neg": m_series[e - w - 1],
+                "abs_dm_pos": abs(dm_pos) if dm_pos is not None else 0.0,
+                "abs_dm_neg": abs(dm_neg) if dm_neg is not None else 0.0,
+                "rise_pos": mx_pos > 0 and lead_m_ok(m_series, e, w, 1.0),
+                "rise_strict_pos": mx_pos > 0 and lead_m_ok(m_series, e, w, 0.5),
+                "rise_neg": mx_neg > 0 and lead_m_ok(m_series, e - w, w, 1.0),
+            }
+        )
+    return pairs, stats
+
+
 def future_label(events: set[int], i: int, w: int, n: int) -> int:
     for e in range(i + 1, min(i + w, n) + 1):
         if e in events:
@@ -495,6 +604,8 @@ def analyze_window(
     *,
     rolling: bool = False,
     allow_over_cap: bool = False,
+    local_b: bool = False,
+    wallclock: bool = False,
 ) -> dict:
     repo = ensure_clone(window)
     start, end = window["start"], window["end"]
@@ -516,6 +627,7 @@ def analyze_window(
     m_hist: list[float] = []
     mbin_hist: list[float] = []
     m_roll_hist: list[float] = []
+    wall_rows: list[dict] = []
     t3_ok = True
     t3_roll_ok = True
     fields = SERIES_FIELDS_ROLL if rolling else SERIES_FIELDS
@@ -544,61 +656,124 @@ def analyze_window(
             append_ckpt_map(ckpt, sha, live)
             saved.append((sha, live))
         maps.append(live)
-        if baseline is None:
-            baseline = dict(live)
-        n0 = len(baseline)
-        m = public_m(baseline, live)
-        mb = float(public_m_bin(baseline, live))
-        m_hist.append(m)
-        mbin_hist.append(mb)
-        d_m, a_m = kinematics(m_hist)
-        d_b, a_b = kinematics(mbin_hist)
-        statuses = [path_status(baseline, live, p) for p in baseline]
-        m_log = m_from_log(statuses, n0)
-        if abs(m_log - m) > 1e-12:
-            t3_ok = False
-        row = {
-            "sample": s_i,
-            "first_parent_index": commit_i,
-            "sha": sha,
-            "n0": n0,
-            "m": m,
-            "delta_m": "" if d_m is None else d_m,
-            "a": "" if a_m is None else a_m,
-            "m_bin": mb,
-            "delta_m_bin": "" if d_b is None else d_b,
-            "a_bin": "" if a_b is None else a_b,
-            "m_from_log": m_log,
-            "revert_commit": int(sha in revert_shas),
-            "event_sample": int(s_i in events),
-        }
-        if rolling:
-            roll_i = (s_i // ROLL_EVERY) * ROLL_EVERY
-            b_roll = maps[roll_i]
-            n0_roll = len(b_roll)
-            m_roll = public_m(b_roll, live)
-            m_roll_hist.append(m_roll)
-            d_mr, a_mr = kinematics(m_roll_hist)
-            statuses_roll = [path_status(b_roll, live, p) for p in b_roll]
-            m_log_roll = m_from_log(statuses_roll, n0_roll)
-            if abs(m_log_roll - m_roll) > 1e-12:
-                t3_roll_ok = False
-            row.update(
+        if wallclock:
+            unix, iso = committer_meta(repo, sha)
+            parent_unix = first_parent_committer_unix(repo, sha)
+            hours: float | str = ""
+            if wall_rows:
+                hours = (unix - int(wall_rows[-1]["committer_unix"])) / 3600.0
+            wall_rows.append(
                 {
-                    "roll_baseline_sample": roll_i,
-                    "n0_roll": n0_roll,
-                    "m_roll": m_roll,
-                    "delta_m_roll": "" if d_mr is None else d_mr,
-                    "a_roll": "" if a_mr is None else a_mr,
-                    "m_from_log_roll": m_log_roll,
+                    "window": window["id"],
+                    "repo": window["name"],
+                    "sample": s_i,
+                    "sha": sha,
+                    "committer_unix": unix,
+                    "committer_iso": iso,
+                    "hours_since_prev_sample": hours,
+                    "flag_unix_lt_1": int(unix < 1),
+                    "flag_before_first_parent": int(
+                        parent_unix is not None and unix < parent_unix
+                    ),
                 }
             )
+        if local_b:
+            if s_i == 0:
+                n0 = 0
+                m = 0.0
+                mb = 0.0
+                m_log = 0.0
+                d_m = None
+                a_m = None
+                d_b = None
+                a_b = None
+            else:
+                b_prev = maps[-2]
+                n0 = len(b_prev)
+                m = public_m(b_prev, live)
+                mb = float(public_m_bin(b_prev, live))
+                statuses = [path_status(b_prev, live, p) for p in b_prev]
+                m_log = m_from_log(statuses, n0)
+                if abs(m_log - m) > 1e-12:
+                    t3_ok = False
+            m_hist.append(m)
+            mbin_hist.append(mb)
+            if s_i > 0:
+                d_m, a_m = kinematics(m_hist)
+                d_b, a_b = kinematics(mbin_hist)
+            row = {
+                "sample": s_i,
+                "first_parent_index": commit_i,
+                "sha": sha,
+                "n0": n0,
+                "m": m,
+                "delta_m": "" if d_m is None else d_m,
+                "a": "" if a_m is None else a_m,
+                "m_bin": mb,
+                "delta_m_bin": "" if d_b is None else d_b,
+                "a_bin": "" if a_b is None else a_b,
+                "m_from_log": m_log,
+                "revert_commit": int(sha in revert_shas),
+                "event_sample": int(s_i in events),
+            }
+        else:
+            if baseline is None:
+                baseline = dict(live)
+            n0 = len(baseline)
+            m = public_m(baseline, live)
+            mb = float(public_m_bin(baseline, live))
+            m_hist.append(m)
+            mbin_hist.append(mb)
+            d_m, a_m = kinematics(m_hist)
+            d_b, a_b = kinematics(mbin_hist)
+            statuses = [path_status(baseline, live, p) for p in baseline]
+            m_log = m_from_log(statuses, n0)
+            if abs(m_log - m) > 1e-12:
+                t3_ok = False
+            row = {
+                "sample": s_i,
+                "first_parent_index": commit_i,
+                "sha": sha,
+                "n0": n0,
+                "m": m,
+                "delta_m": "" if d_m is None else d_m,
+                "a": "" if a_m is None else a_m,
+                "m_bin": mb,
+                "delta_m_bin": "" if d_b is None else d_b,
+                "a_bin": "" if a_b is None else a_b,
+                "m_from_log": m_log,
+                "revert_commit": int(sha in revert_shas),
+                "event_sample": int(s_i in events),
+            }
+            if rolling:
+                roll_i = (s_i // ROLL_EVERY) * ROLL_EVERY
+                b_roll = maps[roll_i]
+                n0_roll = len(b_roll)
+                m_roll = public_m(b_roll, live)
+                m_roll_hist.append(m_roll)
+                d_mr, a_mr = kinematics(m_roll_hist)
+                statuses_roll = [path_status(b_roll, live, p) for p in b_roll]
+                m_log_roll = m_from_log(statuses_roll, n0_roll)
+                if abs(m_log_roll - m_roll) > 1e-12:
+                    t3_roll_ok = False
+                row.update(
+                    {
+                        "roll_baseline_sample": roll_i,
+                        "n0_roll": n0_roll,
+                        "m_roll": m_roll,
+                        "delta_m_roll": "" if d_mr is None else d_mr,
+                        "a_roll": "" if a_mr is None else a_mr,
+                        "m_from_log_roll": m_log_roll,
+                    }
+                )
         series_rows.append(row)
         write_csv(outdir / f"series_{window['id']}.csv", series_rows, fields)
 
     a_series: list[float | None] = []
+    dm_series: list[float | None] = []
     for row in series_rows:
         a_series.append(None if row["a"] == "" else float(row["a"]))
+        dm_series.append(None if row["delta_m"] == "" else float(row["delta_m"]))
     m_series = [float(r["m"]) for r in series_rows]
     a_series_roll: list[float | None] = []
     m_series_roll: list[float] = []
@@ -627,8 +802,13 @@ def analyze_window(
         "t2_first_m_bin_one": t2_first_mbin_one,
         "t2_last_a_positive": last_a_pos,
         "events": sorted(events),
+        "sampled": sampled,
+        "revert_shas": sorted(revert_shas),
+        "all_shas": all_shas,
+        "wall_rows": wall_rows,
         "m_series": m_series,
         "a_series": a_series,
+        "dm_series": dm_series,
         "m_series_roll": m_series_roll,
         "a_series_roll": a_series_roll,
         "series_rows": series_rows,
@@ -690,6 +870,260 @@ def t1_table(
     return t1_rows, t1_md, score_by_split
 
 
+def write_outputs_v3(
+    summaries: list[dict],
+    outdir: Path,
+    *,
+    train_label: str,
+    test_label: str,
+) -> None:
+    t1_rows: list[dict] = []
+    t1_md: list[str] = []
+    pair_by_split: dict[str, dict[int, list[dict]]] = {"train": {}, "test": {}}
+    for w in LEAD_W:
+        pair_by_split["train"][w] = []
+        pair_by_split["test"][w] = []
+    drop_md: list[str] = []
+    for s in summaries:
+        events = set(s["events"])
+        revert_shas = set(s["revert_shas"])
+        for w in LEAD_W:
+            pairs, stats = matched_pair_rows(
+                s["a_series"],
+                s["m_series"],
+                s["dm_series"],
+                events,
+                s["sampled"],
+                s["all_shas"],
+                revert_shas,
+                w,
+            )
+            n_pos = stats["n_matched"]
+            pos_rise = sum(1 for p in pairs if p["rise_pos"])
+            neg_rise = sum(1 for p in pairs if p["rise_neg"])
+            pos_strict = sum(1 for p in pairs if p["rise_strict_pos"])
+            t1_rows.append(
+                {
+                    "window": s["id"],
+                    "repo": s["name"],
+                    "split": s["split"],
+                    "w": w,
+                    "n_positive": n_pos,
+                    "n_negative": n_pos,
+                    "positives_lead_rise": pos_rise,
+                    "negatives_lead_rise": neg_rise,
+                    "positives_lead_rise_m_lt_0.5": pos_strict,
+                    "n_events": stats["n_events"],
+                    "n_dropped_short": stats["n_dropped_short"],
+                    "n_dropped_contaminated": stats["n_dropped_contaminated"],
+                    "n_dropped_no_a": stats["n_dropped_no_a"],
+                    "n_matched": stats["n_matched"],
+                }
+            )
+            t1_md.append(
+                f"- {s['name']} w={w}: matched {stats['n_matched']}/{stats['n_events']} "
+                f"(dropped short {stats['n_dropped_short']}, contaminated "
+                f"{stats['n_dropped_contaminated']}, no a {stats['n_dropped_no_a']}); "
+                f"positives {pos_rise}/{n_pos} lead rise; "
+                f"negatives {neg_rise}/{n_pos} lead rise; "
+                f"strict (m<0.5) positives {pos_strict}/{n_pos}."
+            )
+            for p in pairs:
+                pair_by_split[s["split"]][w].extend(
+                    [
+                        {
+                            "score_a": p["max_a_pos"],
+                            "score_m": p["m_pos"],
+                            "score_dm": p["abs_dm_pos"],
+                            "label": 1,
+                        },
+                        {
+                            "score_a": p["max_a_neg"],
+                            "score_m": p["m_neg"],
+                            "score_dm": p["abs_dm_neg"],
+                            "label": 0,
+                        },
+                    ]
+                )
+            drop_md.append(
+                f"- {s['name']} w={w}: events {stats['n_events']}, matched "
+                f"{stats['n_matched']}, dropped short {stats['n_dropped_short']}, "
+                f"contaminated {stats['n_dropped_contaminated']}, no a "
+                f"{stats['n_dropped_no_a']}."
+            )
+    write_csv(outdir / "t1_counts.csv", t1_rows, T1_MATCH_FIELDS)
+
+    wall_all: list[dict] = []
+    for s in summaries:
+        wall_all.extend(s.get("wall_rows") or [])
+    if wall_all:
+        write_csv(outdir / "wallclock_spacing.csv", wall_all, WALL_FIELDS)
+
+    t2_rows = []
+    for s in summaries:
+        t2_rows.append(
+            {
+                "window": s["id"],
+                "repo": s["name"],
+                "first_sample_m_bin_eq_1": s["t2_first_m_bin_one"],
+                "last_sample_path_fraction_a_gt_0": s["t2_last_a_positive"],
+            }
+        )
+    write_csv(
+        outdir / "t2_binary.csv",
+        t2_rows,
+        ["window", "repo", "first_sample_m_bin_eq_1", "last_sample_path_fraction_a_gt_0"],
+    )
+    t3_rows = [
+        {
+            "window": s["id"],
+            "repo": s["name"],
+            "log_equals_rewalk": int(s["t3_log_equals_rewalk"]),
+        }
+        for s in summaries
+    ]
+    write_csv(outdir / "t3_log_equality.csv", t3_rows, ["window", "repo", "log_equals_rewalk"])
+
+    op_rows: list[dict] = []
+    op_md: list[str] = []
+    for w in LEAD_W:
+        train = pair_by_split["train"][w]
+        test = pair_by_split["test"][w]
+        tau_a, train_info = youden_tau([r["score_a"] for r in train], [r["label"] for r in train])
+        tau_m, _ = youden_tau([r["score_m"] for r in train], [r["label"] for r in train])
+        tau_dm, _ = youden_tau([r["score_dm"] for r in train], [r["label"] for r in train])
+        row = {
+            "w": w,
+            "train_n": train_info.get("n", len(train)),
+            "train_positives": train_info.get("positives", sum(r["label"] for r in train)),
+            "tau_a": "" if tau_a is None else tau_a,
+            "tau_m": "" if tau_m is None else tau_m,
+            "tau_abs_dm": "" if tau_dm is None else tau_dm,
+            "note": train_info.get("note", ""),
+        }
+
+        def _beats(rec_x: float, fpr_x: float, rec_y: float, fpr_y: float) -> bool:
+            return (rec_x > rec_y and fpr_x <= fpr_y) or (fpr_x < fpr_y and rec_x >= rec_y)
+
+        if tau_a is not None and test:
+            m_a = class_metrics([r["score_a"] for r in test], [r["label"] for r in test], tau_a)
+            row.update({f"test_a_{k}": v for k, v in m_a.items()})
+        if tau_m is not None and test:
+            m_m = class_metrics([r["score_m"] for r in test], [r["label"] for r in test], tau_m)
+            row.update({f"test_m_{k}": v for k, v in m_m.items()})
+        if tau_dm is not None and test:
+            m_d = class_metrics([r["score_dm"] for r in test], [r["label"] for r in test], tau_dm)
+            row.update({f"test_dm_{k}": v for k, v in m_d.items()})
+        if tau_a is not None and tau_m is not None and test:
+            rec_a = float(row.get("test_a_recall", 0))
+            rec_m = float(row.get("test_m_recall", 0))
+            fpr_a = float(row.get("test_a_false_positive_rate", 1))
+            fpr_m = float(row.get("test_m_false_positive_rate", 1))
+            beats_m = _beats(rec_a, fpr_a, rec_m, fpr_m)
+            row["a_beats_latest_m_on_test"] = int(beats_m)
+            rec_d = float(row.get("test_dm_recall", 0)) if tau_dm is not None else 0.0
+            fpr_d = float(row.get("test_dm_false_positive_rate", 1)) if tau_dm is not None else 1.0
+            beats_d = _beats(rec_a, fpr_a, rec_d, fpr_d) if tau_dm is not None else False
+            row["a_beats_abs_delta_m_on_test"] = int(beats_d) if tau_dm is not None else ""
+            op_md.append(
+                f"- w={w}: train Youden τ_a={fmt(tau_a)}, τ_m={fmt(tau_m)}, "
+                f"τ_|Δm|={fmt(tau_dm)}. "
+                f"Test recall a={fmt(rec_a)} vs m={fmt(rec_m)} vs |Δm|={fmt(rec_d)}; "
+                f"FPR a={fmt(fpr_a)} vs m={fmt(fpr_m)} vs |Δm|={fmt(fpr_d)}. "
+                f"{'a beat latest m on this rule' if beats_m else 'a did not beat latest m on this rule'}. "
+                f"{'a beat latest |Δm| on this rule' if beats_d else 'a did not beat latest |Δm| on this rule'}. "
+                "Operating point on this corpus only; not window-closed. "
+                "Matched pairs only."
+            )
+        else:
+            row["a_beats_latest_m_on_test"] = ""
+            row["a_beats_abs_delta_m_on_test"] = ""
+            op_md.append(
+                f"- w={w}: Youden τ not defined or test empty ({train_info.get('note', '')})."
+            )
+        op_rows.append(row)
+    write_csv(outdir / "operating_point.csv", op_rows, sorted({k for r in op_rows for k in r.keys()}))
+
+    n_unix_lt_1 = sum(int(r["flag_unix_lt_1"]) for r in wall_all)
+    n_before_parent = sum(int(r["flag_before_first_parent"]) for r in wall_all)
+    hours = [float(r["hours_since_prev_sample"]) for r in wall_all if r["hours_since_prev_sample"] != ""]
+    hours_md = "n/a"
+    if hours:
+        hours_md = (
+            f"n={len(hours)}, min={min(hours):.6g} h, median="
+            f"{sorted(hours)[len(hours)//2]:.6g} h, max={max(hours):.6g} h"
+        )
+
+    lines = [
+        "# Results (family B v3)",
+        "",
+        "Public path-fraction *m* on the frozen D1/C1 walks in `CORPUS.md`. Companion to Hartman, *Kinetic Analysis of Informational Disorder*, v2.4 (2026), [doi:10.5281/zenodo.22417058](https://doi.org/10.5281/zenodo.22417058). Methods/results record: [doi:10.5281/zenodo.22655761](https://doi.org/10.5281/zenodo.22655761).",
+        "",
+        "A revert is an independent git event, not proof that integrity was unrecoverable. Fitted τ is an operating point on this corpus, not window-closed.",
+        "",
+        "v3 confirmatory: *B* = previous sample; labels = `is_revert_message` only; matched control is sample block *e−2w … e−w−1*; drop if that first-parent range contains a revert-message commit. Do not walk further back. v1 and v2 stay as published (`results/`, `results-v2/`).",
+        "",
+        "Time index is sample number at *k* = 25, not wall-clock. Wall-clock hours are reported as spacing only. This study does not interpolate *m*, *Δm*, or *a* onto a calendar grid.",
+        "",
+        "## Family A",
+        "",
+        "Synthetic methods check: `python -m pytest test_synthetic_family_a.py`. A-stable and A-steady give *a* near 0; A-accel gives *a* > 0 before *m* saturates. Family A remains that pytest check; this directory has no family A series CSV.",
+        "",
+        "## T1 observational counts (local B, matched negatives)",
+        "",
+    ]
+    lines.extend(t1_md)
+    lines.extend(["", "## Matched-pair drop counts", ""])
+    lines.extend(drop_md)
+    lines.extend(["", "## T2 binary vs path-fraction (local B)", ""])
+    for s in summaries:
+        lines.append(
+            f"- {s['name']}: first sample with m_bin=1 is {s['t2_first_m_bin_one']}; "
+            f"last sample with path-fraction a>0 is {s['t2_last_a_positive']}."
+        )
+    lines.extend(["", "## T3 log equals re-walk (local B)", ""])
+    for s in summaries:
+        lines.append(f"- {s['name']}: {'pass' if s['t3_log_equals_rewalk'] else 'FAIL'}.")
+    lines.extend(["", f"## Operating point (train {train_label}, test {test_label}, matched pairs)", ""])
+    lines.extend(op_md)
+    lines.extend(
+        [
+            "",
+            "## Wall-clock spacing (not interpolated into a)",
+            "",
+            f"- samples with unix time < 1: {n_unix_lt_1}.",
+            f"- samples with committer stamp earlier than first-parent: {n_before_parent}.",
+            f"- hours between consecutive samples: {hours_md}.",
+            "",
+            "## Window sizes",
+            "",
+        ]
+    )
+    for s in summaries:
+        lines.append(
+            f"- {s['name']}: {s['n_first_parent']} first-parent commits, "
+            f"{s['n_samples']} samples (k={K}), {s['n_reverts']} revert-message commits, "
+            f"{s['n_event_samples']} event samples."
+        )
+    lines.extend(["", "CSVs in `results-v3/`."])
+    (outdir / "RESULTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    skip = (
+        "series_rows",
+        "m_series",
+        "a_series",
+        "dm_series",
+        "m_series_roll",
+        "a_series_roll",
+        "all_shas",
+        "wall_rows",
+    )
+    (outdir / "summary.json").write_text(
+        json.dumps([{k: v for k, v in s.items() if k not in skip} for s in summaries], indent=2)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def write_outputs(
     summaries: list[dict],
     outdir: Path,
@@ -699,6 +1133,9 @@ def write_outputs(
     test_label: str,
     csv_dir_name: str,
 ) -> None:
+    if corpus == "v3":
+        write_outputs_v3(summaries, outdir, train_label=train_label, test_label=test_label)
+        return
     t1_rows, t1_md, score_by_split = t1_table(summaries, m_key="m_series", a_key="a_series")
     write_csv(outdir / "t1_counts.csv", t1_rows, T1_FIELDS)
 
@@ -868,9 +1305,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Family B observational run")
     parser.add_argument(
         "--corpus",
-        choices=("v1", "v2"),
+        choices=("v1", "v2", "v3"),
         default="v1",
-        help="v1 writes results/ (published miss). v2 writes results-v2/.",
+        help="v1 writes results/. v2 writes results-v2/. v3 writes results-v3/ (local B, matched negatives).",
     )
     parser.add_argument(
         "--allow-over-cap",
@@ -882,16 +1319,29 @@ def main() -> int:
         windows = WINDOWS_V1
         outdir = RESULTS_V1
         rolling = False
+        local_b = False
+        wallclock = False
         train_label = "flask"
         test_label = "HTTPie"
         csv_dir_name = "results"
-    else:
+    elif args.corpus == "v2":
         windows = WINDOWS_V2
         outdir = RESULTS_V2
         rolling = True
+        local_b = False
+        wallclock = False
         train_label = "django"
         test_label = "CPython"
         csv_dir_name = "results-v2"
+    else:
+        windows = WINDOWS_V2
+        outdir = RESULTS_V3
+        rolling = False
+        local_b = True
+        wallclock = True
+        train_label = "django"
+        test_label = "CPython"
+        csv_dir_name = "results-v3"
     if not args.allow_over_cap:
         over: list[str] = []
         for w in windows:
@@ -908,7 +1358,14 @@ def main() -> int:
             )
     outdir.mkdir(parents=True, exist_ok=True)
     summaries = [
-        analyze_window(w, outdir, rolling=rolling, allow_over_cap=args.allow_over_cap)
+        analyze_window(
+            w,
+            outdir,
+            rolling=rolling,
+            allow_over_cap=args.allow_over_cap,
+            local_b=local_b,
+            wallclock=wallclock,
+        )
         for w in windows
     ]
     write_outputs(

@@ -1,0 +1,3 @@
+a_beats_abs_delta_m_on_test,a_beats_latest_m_on_test,note,tau_a,tau_abs_dm,tau_m,test_a_false_positive_rate,test_a_fn,test_a_fp,test_a_precision,test_a_recall,test_a_tn,test_a_tp,test_dm_false_positive_rate,test_dm_fn,test_dm_fp,test_dm_precision,test_dm_recall,test_dm_tn,test_dm_tp,test_m_false_positive_rate,test_m_fn,test_m_fp,test_m_precision,test_m_recall,test_m_tn,test_m_tp,train_n,train_positives,w
+0,0,,0.018432063380331924,0.026466165413533832,0.040865384615384616,0.5,6,4,0.3333333333333333,0.25,4,2,0.0,7,0,1.0,0.125,8,1,0.0,7,0,1.0,0.125,8,1,8,4,5
+,,Youden undefined (need both classes),,,,,,,,,,,,,,,,,,,,,,,,,0,0,10

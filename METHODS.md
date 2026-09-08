@@ -63,12 +63,25 @@ v1 tag windows stay as published. Do not slide F1/H1. v2 does not change *m*, th
 - Youden τ remains an operating point, not window-closed.
 - First-parent commit count is recorded at freeze. CPython 2023 exceeded 2000 first-parent commits; the v2 archive ran with `--allow-over-cap` after that waiver. Do not replace a remote by revert density.
 
-## Corpus v3 (locked 7 September 2026, not started)
+## Corpus v3 (locked 8 September 2026, confirmatory)
 
-Do not extend `CORPUS.md` or inspect new revert counts until a later run is approved against this freeze. v1 and v2 stay as published. Do not slide v2 SHAs, *k*, or public *m*. If a run is later approved, extend `run_family_b.py` only.
+v1 and v2 stay as published. Do not slide v2 SHAs, *k*, or public *m*. Do not mix v3 tables into `results/` or `results-v2/`. Extend `run_family_b.py` only. Same D1/C1 remotes and SHAs (`CORPUS.md`). Same *k* = 25. Same *w* = 5 and *w* = 10. Same Youden-on-ROC. Train django/django, test python/cpython.
 
-- Independent equal-length no-revert windows. Do not reuse other samples inside an event window as the matched negatives.
-- Revert labels: git-graph revert of a prior commit in the window plus the message regex, or message-only stated as message-only before SHAs.
-- Primary *B* is local (previous sample, or a pre-declared rolling window shorter than the full series). Do not mix a v3 table into v2 CSVs.
-- Optional robustness, pre-declared before SHAs: denser *k*, or wall-clock spacing with a declared interpolation rule.
-- Public trees only. Same public *m*. No withheld production estimator.
+Confirmatory (one factor vs v2):
+
+- Same public *m* (baseline-only SHA-256 path fraction). Primary *B* = previous sample, not sample 0 and not the v2 rolling-20 table. At sample 0, *m* is 0 (no previous tree). *Δm* and *a* follow `public_m.kinematics` on that local series.
+- Labels: `is_revert_message` only (subject `^revert` or body `this reverts`). Git stores no revert edge; default `git revert` text is `This reverts commit`.
+- Independent matched negatives: for an event sample *e* and lead width *w*, the control is the immediately preceding equal-length sample block *e−2w … e−w−1*. Drop that positive from the matched table if *e < 2w*, if max *a* on either block is undefined, or if the first-parent commits from sample *e−2w* up to (not including) sample *e−w* include any revert-message commit. Do not walk further back. Do not mine a new year or remote. Do not reuse other samples inside the event window as negatives.
+- Lead-rise uses local *m*/*a*. Fitted τ is an operating point, not window-closed.
+
+Secondary, not mixed into primary T1:
+
+- Youden baseline on latest *|Δm|* in addition to latest *m*.
+- Wall-clock spacing robustness (not interpolation): committer date (`%ct` / `%cI`, same clock as the CORPUS `--after/--before` freeze). Per sample: hours since the previous sample; flag unix time < 1; flag committer stamp earlier than the first-parent committer stamp (Flint et al. 2021). Do not interpolate *m*, *Δm*, or *a* onto a regular calendar grid.
+
+Not this run (later locks only, after v3 tables exist and the maintainer asks):
+
+- Denser *k* (v4): same local *B* and matched-drop rule; change only *k* on a shorter pre-declared slice of D1/C1 so the 2000-commit archive cap holds. Write `results-v4/`.
+- New remotes (v5): lock names and `--after/--before` before `git log`. Record first-parent counts, not revert counts. Do not replace a remote by revert density. Write `results-v5/`.
+
+Out of this public repository: withheld production estimator, product *m*, tick or other high-frequency stream series. CPython 2023 still exceeds 2000 first-parent commits; v3 archives use `--allow-over-cap` as compute-only on the frozen C1 walk.

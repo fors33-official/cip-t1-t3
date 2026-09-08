@@ -51,3 +51,12 @@ C1 exceeds the 2000 first-parent cap. Stop before archives.
 ### Train / test split (v2)
 
 Whole repositories, not samples. Pre-declared: django/django is train, python/cpython is test. Do not reverse that assignment after labels are seen.
+
+## Corpus v3 (same D1/C1 walks)
+
+v3 is a new analysis of the frozen D1 and C1 first-parent walks above. It does not add, drop, or slide those SHAs. No new remotes and no new calendar bounds. Start/end remain:
+
+- D1 django/django: `174d8157b5700f6451ac0bdc3eef7e73121bc4a4` … `d88ec42bd0a37340c8477a6f20bf26e58bd84735` (966 first-parent commits)
+- C1 python/cpython: `1f6c87ca7b9351b2e5c5363504796fce0554c9b8` … `2849cbb53afc8c6a4465f1b3490c67c2455caf6f` (4442 first-parent commits)
+
+Train/test unchanged: django/django train, python/cpython test. This section does not record revert counts. See `METHODS.md` Corpus v3 for local *B*, matched negatives, and wall-clock reporting (no interpolation).
