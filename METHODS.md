@@ -20,7 +20,11 @@ Primary denominator: baseline-only (*N_0* from *B*). Missing baseline paths coun
 - A-steady: each sample, flip 2% additional previously unflipped baseline paths. Expect *a* near 0 and constant *Δm*.
 - A-accel: each sample, flip twice as many new paths as the previous sample, cap at 100%. Expect *a* > 0 before *m* saturates at 1.
 
-Family A is implemented in `test_synthetic_family_a.py`. If A fails, the implementation of *m* is wrong. Do not proceed to observational T1. Family A in this tree is that pytest check; no family A series CSV is published.
+Family A is implemented in `test_synthetic_family_a.py`. If A fails, the implementation of *m* is wrong. Do not proceed to observational T1.
+
+## Family A series (locked 11 September 2026)
+
+Protocol completeness, not a new experiment and not mixed into observational T1. Publish the three *m*/*a* series from the **same** A-stable / A-steady / A-accel generators as `test_synthetic_family_a.py`. Do not retune flip fractions, file counts, or sample counts after seeing tables. Extend `run_family_b.py` only (`--corpus a`). Write `results-a/` (three series CSVs plus an A-accel T2 row: first sample with *m_bin* = 1 vs last sample with path-fraction *a* > 0). Leave `results/`, `results-v2/`, `results-v3/`, and `results-v3c/` untouched.
 
 **Family B (observational).** Public git histories, one series per window listed in `CORPUS.md`. The intended positive event is a commit whose message or git graph is a revert of a prior commit in the window. v1 and v2 scored positives with `is_revert_message` only (subject `^revert` or body `this reverts`). Git-graph revert structure was not scored. The intended negatives are equal-length windows with no revert. v2 used other samples in the same calendar window as negatives. Report families separately. A revert is an independent operational event, not proof that integrity was unrecoverable.
 
@@ -49,6 +53,7 @@ Materialize trees with `git archive` at each sampled commit. Walk **first-parent
 - Presenting a fitted τ as window-closed or as a universal constant.
 - Changing path filters, *m*, or *w* after looking at the revert table.
 - Importing cosmology preprints into this study.
+- Presenting these git-window tables as a product test or as window-closed in general.
 
 ## Corpus v2 (locked 7 September 2026, before v2 SHA freeze)
 
@@ -79,9 +84,29 @@ Secondary, not mixed into primary T1:
 - Youden baseline on latest *|Δm|* in addition to latest *m*.
 - Wall-clock spacing robustness (not interpolation): committer date (`%ct` / `%cI`, same clock as the CORPUS `--after/--before` freeze). Per sample: hours since the previous sample; flag unix time < 1; flag committer stamp earlier than the first-parent committer stamp (Flint et al. 2021). Do not interpolate *m*, *Δm*, or *a* onto a regular calendar grid.
 
-Not this run (later locks only, after v3 tables exist and the maintainer asks):
-
-- Denser *k* (v4): same local *B* and matched-drop rule; change only *k* on a shorter pre-declared slice of D1/C1 so the 2000-commit archive cap holds. Write `results-v4/`.
-- New remotes (v5): lock names and `--after/--before` before `git log`. Record first-parent counts, not revert counts. Do not replace a remote by revert density. Write `results-v5/`.
+This public git-revert series does not continue as denser *k* or new remotes. Do not write `results-v4/` or `results-v5/` as patches to these tables.
 
 Out of this public repository: withheld production estimator, product *m*, tick or other high-frequency stream series. CPython 2023 still exceeds 2000 first-parent commits; v3 archives use `--allow-over-cap` as compute-only on the frozen C1 walk.
+
+## Corpus v3c (locked 11 September 2026, continuous contrast)
+
+Pre-specified secondary analysis of the frozen v3 matched pairs (STARD: not a new corpus, not an exploratory peek after seeing magnitudes). v1, v2, and v3 stay as published. Do not slide D1/C1 SHAs, *k*, public *m*, *w*, or the v3 drop rule. Do not rewrite `results/`, `results-v2/`, or the v3 sign-test tables in `results-v3/`. Extend `run_family_b.py` only. Write `results-v3c/`. Reuse the frozen v3 series (`results-v3/series_d1.csv`, `results-v3/series_c1.csv`) and the same matcher; do not re-archive.
+
+This run does not replace the v3 sign test (`max a > 0`). It asks whether lead-window **max *a*** is **larger** on the event block than on the matched control block.
+
+- Same pairs as v3: event sample *e*, control block *e−2w … e−w−1*, same contamination / short / undefined-*a* drops. Labels remain `is_revert_message` only.
+- Pairwise difference *d_a = max a* on *e−w … e−1* minus *max a* on *e−2w … e−w−1*.
+- Primary estimand: Hodges–Lehmann estimator of *d_a* (median of Walsh averages). Report mean and median of *d_a* as well. Counts: *n* with *d_a > 0*, *= 0*, *< 0*. Concordance *(n_> + 0.5 n_=) / n*.
+- Decision rule: whether the 95% interval for the Hodges–Lehmann estimand includes 0. If it includes 0, magnitudes do not separate on this rule. Fitted τ is not used. Do not add unpaired AUC.
+- Interval: prefer Wilcoxon-inverted Walsh/Bauer endpoints (Bauer 1972) in the standard library. If ties or discreteness prevent an exact 95% inversion, use percentile bootstrap of the Hodges–Lehmann estimator, *B* = 10000, seed 20260908, as the stated 95% fallback, and report the attained exact coverage. Wilson 95% interval on *P(d_a > 0)* (not Wald).
+- Test: exact two-sided Wilcoxon signed-rank on non-zero *d_a* (midranks for ties in *|d|*). Report *T+* and *p*; do not treat *p < 0.05* as window-closed. At *n* = 4 the smallest two-sided exact *p* is 0.125.
+- Split: django/django is descriptive; python/cpython is the confirmatory table. Report *w* = 5 and *w* = 10 separately. Do not pool windows into one confirmatory row.
+- Secondary, not mixed into the primary *a* table: the same paired procedure on lead-window max *|Δm|* (samples *e−w … e−1* vs *e−2w … e−w−1*).
+
+Out of this public repository: withheld production estimator, product *m*, tick or other high-frequency stream series. CPython 2023 still exceeds 2000 first-parent commits; v3 archives use `--allow-over-cap` as compute-only on the frozen C1 walk. v3c does not archive.
+
+## Scope of this record (v1–v3c)
+
+v1, v2, v3, and v3c are the complete public git-revert T1 series in this repository. The confirmatory finding is no lead-time class contrast on this proxy: live-branch path-fraction *a* before revert-message commits. A revert is an independent git event, not proof that integrity was unrecoverable. These tables are a methods check for the working paper, not a general lead-time result and not a product test.
+
+Do not add `results-v4/` or `results-v5/`. Do not slide F1/H1/D1/C1 SHAs, *k*, public *m*, or the revert regex. Family C / T4 stay out of this repository.

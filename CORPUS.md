@@ -60,3 +60,16 @@ v3 is a new analysis of the frozen D1 and C1 first-parent walks above. It does n
 - C1 python/cpython: `1f6c87ca7b9351b2e5c5363504796fce0554c9b8` … `2849cbb53afc8c6a4465f1b3490c67c2455caf6f` (4442 first-parent commits)
 
 Train/test unchanged: django/django train, python/cpython test. This section does not record revert counts. See `METHODS.md` Corpus v3 for local *B*, matched negatives, and wall-clock reporting (no interpolation).
+
+## Corpus v3c (same D1/C1 walks, continuous contrast)
+
+v3c is a new analysis of the frozen v3 series on the same D1 and C1 walks. It does not add, drop, or slide those SHAs. No new remotes, no new calendar bounds, no new archives. Start/end remain:
+
+- D1 django/django: `174d8157b5700f6451ac0bdc3eef7e73121bc4a4` … `d88ec42bd0a37340c8477a6f20bf26e58bd84735` (966 first-parent commits)
+- C1 python/cpython: `1f6c87ca7b9351b2e5c5363504796fce0554c9b8` … `2849cbb53afc8c6a4465f1b3490c67c2455caf6f` (4442 first-parent commits)
+
+Train/test unchanged: django/django train, python/cpython test. This section does not record revert counts. See `METHODS.md` Corpus v3c for the paired max-*a* contrast.
+
+## Closed
+
+F1, H1, D1, and C1 and the v1–v3c analyses of those walks are the complete observational set for this repository. Do not add windows, remotes, or calendar bounds. Do not slide these SHAs.
